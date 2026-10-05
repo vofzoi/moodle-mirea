@@ -33,37 +33,66 @@
 
 ## Установка
 
-Нужны: Python 3.12+, curl. Платформа: macOS / Linux.
-
 ### 1. Код и зависимости
 
+Нужны: Python 3.12+, git (curl уже есть на macOS и Linux, на Windows 10+ входит в состав).
+
+**macOS / Linux:**
 ```bash
-git clone https://github.com/<YOU>/moodle-mirea.git
+git clone https://github.com/Axenov9/moodle-mirea.git
 cd moodle-mirea
 python3.12 -m venv .venv
 .venv/bin/pip install "mcp<2"
 ```
 
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/Axenov9/moodle-mirea.git
+cd moodle-mirea
+py -3.12 -m venv .venv
+.venv\Scripts\pip install "mcp<2"
+```
+
+> Python 3.12 на Windows: `winget install Python.Python.3.12` или с python.org (отметь
+> «Add python.exe to PATH»). Если `py -3.12` не находится — проверь `py --list`.
 > Именно `mcp<2`: в mcp 2.x переименовали `FastMCP`, сервер собран под 1.x API.
 
 ### 2. Cookie сессии
 
 1. В браузере зайди на `online-edu.mirea.ru` (SSO МИРЭА, 2FA/пасскей).
-2. DevTools (F12) → **Application → Cookies → online-edu.mirea.ru** → скопируй значение `MoodleSession`.
+2. Открой DevTools (F12):
+   - Chrome / Edge / Яндекс.Браузер: **Application → Cookies → online-edu.mirea.ru**
+   - Firefox: **Хранилище → Куки → online-edu.mirea.ru**
+
+   Скопируй значение cookie `MoodleSession` целиком (столбец «Значение»).
 3. Сохрани в файл:
 
+**macOS / Linux:**
 ```bash
 mkdir -p ~/.zcode
 echo 'MoodleSession=ЗНАЧЕНИЕ' > ~/.zcode/moodle_cookie
 chmod 600 ~/.zcode/moodle_cookie
 ```
 
-Проверка живости (200 = ок, 303/логин = протухла):
+**Windows (PowerShell):**
+```powershell
+New-Item -ItemType Directory -Force "$env:USERPROFILE\.zcode" | Out-Null
+Set-Content "$env:USERPROFILE\.zcode\moodle_cookie" "MoodleSession=ЗНАЧЕНИЕ"
+```
+(файл будет `C:\Users\<YOU>\.zcode\moodle_cookie`)
 
+Проверка живости (200 = ок, 303/страница логина = протухла):
+
+**macOS / Linux:**
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" \
   -H "Cookie: $(cat ~/.zcode/moodle_cookie)" -A "Mozilla/5.0" \
   https://online-edu.mirea.ru/my/
+```
+
+**Windows (PowerShell):**
+```powershell
+curl.exe -s -o NUL -w "%{http_code}" -H "Cookie: $(Get-Content $env:USERPROFILE\.zcode\moodle_cookie)" -A "Mozilla/5.0" https://online-edu.mirea.ru/my/
 ```
 
 > Cookie = твой identity в портале. Не шарить, не коммитить, chmod 600.
@@ -90,23 +119,60 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 }
 ```
 
+**Windows** (в JSON двойные бэкслеши обязательны):
+```json
+{
+  "mcp": {
+    "servers": {
+      "moodle": {
+        "type": "stdio",
+        "command": "C:\\Users\\<YOU>\\.zcode\\mcp\\moodle-mirea\\.venv\\Scripts\\python.exe",
+        "args": ["C:\\Users\\<YOU>\\.zcode\\mcp\\moodle-mirea\\server.py"],
+        "env": {
+          "MOODLE_BASE": "https://online-edu.mirea.ru",
+          "MOODLE_COOKIE_FILE": "C:\\Users\\<YOU>\\.zcode\\moodle_cookie"
+        }
+      }
+    }
+  }
+}
+```
+
 Перезапусти клиент — инструменты появятся как `mcp__moodle__*`.
 
 Сервер **самоописываемый**: при подключении MCP-клиент получает `instructions` (полный cheatsheet
 по циклу работы, источникам cmid и кодам ошибок) и описание каждого инструмента из его docstring —
 отдельные AGENTS.md/инструкции для агента не обязательны.
 
-### 4. Keep-alive (опционально, macOS)
+### 4. Keep-alive — автопродление сессии (опционально)
 
-Сессия умирает примерно через час без активности. Агент-скрипт пингует `/my/` каждые 20 минут:
+Сессия умирает примерно через час без активности. Скрипт пингует `/my/` каждые 20 минут и пишет
+лог: `~/.zcode/moodle_keepalive.log` (macOS/Linux) или `C:\Users\<YOU>\.zcode\moodle_keepalive.log`
+(Windows). Строки `OK` — сессия жива; `DEAD` — пора обновить cookie из браузера.
 
+**macOS** — LaunchAgent одной командой:
 ```bash
-./install_keepalive.sh          # ставит LaunchAgent и запускает
-tail -f ~/.zcode/moodle_keepalive.log   # OK / DEAD (DEAD = обнови cookie)
+./install_keepalive.sh
+tail -f ~/.zcode/moodle_keepalive.log
 ```
-
 Управление: `launchctl bootout gui/$(id -u)/ru.mirea.moodle-keepalive` (выключить),
 `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/ru.mirea.moodle-keepalive.plist` (включить).
+
+**Windows** — Планировщик заданий (PowerShell, под своим пользователем):
+```powershell
+schtasks /Create /F /TN "MoodleKeepAlive" /SC MINUTE /MO 20 `
+  /TR "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\<YOU>\.zcode\mcp\moodle-mirea\windows_keepalive.ps1"
+schtasks /Run /TN "MoodleKeepAlive"
+```
+Вторая команда запускает проверку сразу (не ждать 20 минут). Управление:
+`schtasks /Query /TN "MoodleKeepAlive"` — статус, `schtasks /Delete /TN "MoodleKeepAlive"` — удалить.
+По умолчанию задание работает, пока ты залогинен в Windows; чтобы пинговать и без входа —
+в свойствах задания включи «Выполнять вне зависимости от регистрации пользователя».
+
+**Linux** — cron (`crontab -e`):
+```cron
+*/20 * * * * /путь/к/moodle-mirea/keepalive.sh
+```
 
 ## Типовые ошибки
 
