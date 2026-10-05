@@ -39,7 +39,7 @@
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/Axenov9/moodle-mirea.git
+git clone https://github.com/vofzoi/moodle-mirea.git
 cd moodle-mirea
 python3.12 -m venv .venv
 .venv/bin/pip install "mcp<2"
@@ -47,7 +47,7 @@ python3.12 -m venv .venv
 
 **Windows (PowerShell):**
 ```powershell
-git clone https://github.com/Axenov9/moodle-mirea.git
+git clone https://github.com/vofzoi/moodle-mirea.git
 cd moodle-mirea
 py -3.12 -m venv .venv
 .venv\Scripts\pip install "mcp<2"
